@@ -661,6 +661,41 @@ static void create_se_table(int *table)
     }
 }
 
+static void set_size_2(struct aec_stream *strm)
+{
+    struct internal_state *state = strm->state;
+
+    state->bytes_per_sample = 2;
+    state->id_len = 4;
+    state->out_blklen = strm->block_size * 2;
+    if (strm->flags & AEC_DATA_MSB)
+        state->flush_output = flush_msb_16;
+    else
+        state->flush_output = flush_lsb_16;
+}
+
+static void set_size_4(struct aec_stream *strm)
+{
+    struct internal_state *state = strm->state;
+
+    state->id_len = 5;
+
+    if (strm->bits_per_sample <= 24 && strm->flags & AEC_DATA_3BYTE) {
+        state->bytes_per_sample = 3;
+        if (strm->flags & AEC_DATA_MSB)
+            state->flush_output = flush_msb_24;
+        else
+            state->flush_output = flush_lsb_24;
+    } else {
+        state->bytes_per_sample = 4;
+        if (strm->flags & AEC_DATA_MSB)
+            state->flush_output = flush_msb_32;
+        else
+            state->flush_output = flush_lsb_32;
+    }
+    state->out_blklen = strm->block_size * state->bytes_per_sample;
+}
+
 int aec_decode_init(struct aec_stream *strm)
 {
     struct internal_state *state;
@@ -678,49 +713,41 @@ int aec_decode_init(struct aec_stream *strm)
 
     strm->state = state;
 
-    if (strm->bits_per_sample > 16) {
-        state->id_len = 5;
-
-        if (strm->bits_per_sample <= 24 && strm->flags & AEC_DATA_3BYTE) {
-            state->bytes_per_sample = 3;
-            if (strm->flags & AEC_DATA_MSB)
-                state->flush_output = flush_msb_24;
-            else
-                state->flush_output = flush_lsb_24;
-        } else {
-            state->bytes_per_sample = 4;
-            if (strm->flags & AEC_DATA_MSB)
-                state->flush_output = flush_msb_32;
-            else
-                state->flush_output = flush_lsb_32;
-        }
-        state->out_blklen = strm->block_size * state->bytes_per_sample;
-    }
-    else if (strm->bits_per_sample > 8) {
-        state->bytes_per_sample = 2;
-        state->id_len = 4;
-        state->out_blklen = strm->block_size * 2;
-        if (strm->flags & AEC_DATA_MSB)
-            state->flush_output = flush_msb_16;
-        else
-            state->flush_output = flush_lsb_16;
-    } else {
-        if (strm->flags & AEC_RESTRICTED) {
-            if (strm->bits_per_sample <= 4) {
-                if (strm->bits_per_sample <= 2)
-                    state->id_len = 1;
-                else
-                    state->id_len = 2;
-            } else {
+    if (strm->flags & (AEC_DATA_WORD | AEC_DATA_DOUBLEWORD)) {
+        /* Storage size is imposed */
+        if (strm->flags & AEC_DATA_WORD) {
+            if (strm->bits_per_sample > 16 || strm->flags & AEC_DATA_DOUBLEWORD)
                 return AEC_CONF_ERROR;
-            }
-        } else {
-            state->id_len = 3;
+            set_size_2(strm);
         }
+        if (strm->flags & AEC_DATA_DOUBLEWORD) {
+            set_size_4(strm);
+        }
+    } else {
+        /* Automatic storage size */
+        if (strm->bits_per_sample > 16) {
+            set_size_4(strm);
+        }
+        else if (strm->bits_per_sample > 8) {
+            set_size_2(strm);
+        } else {
+            if (strm->flags & AEC_RESTRICTED) {
+                if (strm->bits_per_sample <= 4) {
+                    if (strm->bits_per_sample <= 2)
+                        state->id_len = 1;
+                    else
+                        state->id_len = 2;
+                } else {
+                    return AEC_CONF_ERROR;
+                }
+            } else {
+                state->id_len = 3;
+            }
 
-        state->bytes_per_sample = 1;
-        state->out_blklen = strm->block_size;
-        state->flush_output = flush_8;
+            state->bytes_per_sample = 1;
+            state->out_blklen = strm->block_size;
+            state->flush_output = flush_8;
+        }
     }
 
     if (strm->flags & AEC_DATA_SIGNED) {

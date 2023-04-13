@@ -118,6 +118,12 @@ struct aec_stream {
 /* Do not enforce standard regarding legal block sizes. */
 #define AEC_NOT_ENFORCE 64
 
+/* Uncompressed samples are stored in words (2 bytes) */
+#define AEC_DATA_WORD 128
+
+/* Uncompressed samples are stored in doublewords (4 bytes) */
+#define AEC_DATA_DOUBLEWORD 256
+
 /*************************************/
 /* Return codes of library functions */
 /*************************************/

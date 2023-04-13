@@ -744,6 +744,49 @@ static void cleanup(struct aec_stream *strm)
     free(state);
 }
 
+static void set_size_2(struct aec_stream *strm)
+{
+    struct internal_state *state = strm->state;
+
+    state->bytes_per_sample = 2;
+    state->id_len = 4;
+
+    if (strm->flags & AEC_DATA_MSB) {
+        state->get_sample = aec_get_msb_16;
+        state->get_rsi = aec_get_rsi_msb_16;
+    } else {
+        state->get_sample = aec_get_lsb_16;
+        state->get_rsi = aec_get_rsi_lsb_16;
+    }
+}
+
+static void set_size_4(struct aec_stream *strm)
+{
+    struct internal_state *state = strm->state;
+
+    state->id_len = 5;
+
+    if (strm->bits_per_sample <= 24 && strm->flags & AEC_DATA_3BYTE) {
+        state->bytes_per_sample = 3;
+        if (strm->flags & AEC_DATA_MSB) {
+            state->get_sample = aec_get_msb_24;
+            state->get_rsi = aec_get_rsi_msb_24;
+        } else {
+            state->get_sample = aec_get_lsb_24;
+            state->get_rsi = aec_get_rsi_lsb_24;
+        }
+    } else {
+        state->bytes_per_sample = 4;
+        if (strm->flags & AEC_DATA_MSB) {
+            state->get_sample = aec_get_msb_32;
+            state->get_rsi = aec_get_rsi_msb_32;
+        } else {
+            state->get_sample = aec_get_lsb_32;
+            state->get_rsi = aec_get_rsi_lsb_32;
+        }
+    }
+}
+
 /*
  *
  * API functions
@@ -781,61 +824,43 @@ int aec_encode_init(struct aec_stream *strm)
     strm->state = state;
     state->uncomp_len = strm->block_size * strm->bits_per_sample;
 
-    if (strm->bits_per_sample > 16) {
-        /* 24/32 input bit settings */
-        state->id_len = 5;
-
-        if (strm->bits_per_sample <= 24
-            && strm->flags & AEC_DATA_3BYTE) {
-            state->bytes_per_sample = 3;
-            if (strm->flags & AEC_DATA_MSB) {
-                state->get_sample = aec_get_msb_24;
-                state->get_rsi = aec_get_rsi_msb_24;
-            } else {
-                state->get_sample = aec_get_lsb_24;
-                state->get_rsi = aec_get_rsi_lsb_24;
-            }
-        } else {
-            state->bytes_per_sample = 4;
-            if (strm->flags & AEC_DATA_MSB) {
-                state->get_sample = aec_get_msb_32;
-                state->get_rsi = aec_get_rsi_msb_32;
-            } else {
-                state->get_sample = aec_get_lsb_32;
-                state->get_rsi = aec_get_rsi_lsb_32;
-            }
+    if (strm->flags & (AEC_DATA_WORD | AEC_DATA_DOUBLEWORD)) {
+        /* Storage size is imposed */
+        if (strm->flags & AEC_DATA_WORD) {
+            if (strm->bits_per_sample > 16 || strm->flags & AEC_DATA_DOUBLEWORD)
+                return AEC_CONF_ERROR;
+            set_size_2(strm);
         }
-    }
-    else if (strm->bits_per_sample > 8) {
-        /* 16 bit settings */
-        state->id_len = 4;
-        state->bytes_per_sample = 2;
-
-        if (strm->flags & AEC_DATA_MSB) {
-            state->get_sample = aec_get_msb_16;
-            state->get_rsi = aec_get_rsi_msb_16;
-        } else {
-            state->get_sample = aec_get_lsb_16;
-            state->get_rsi = aec_get_rsi_lsb_16;
+        if (strm->flags & AEC_DATA_DOUBLEWORD) {
+            set_size_4(strm);
         }
     } else {
-        /* 8 bit settings */
-        if (strm->flags & AEC_RESTRICTED) {
-            if (strm->bits_per_sample <= 4) {
-                if (strm->bits_per_sample <= 2)
-                    state->id_len = 1;
-                else
-                    state->id_len = 2;
-            } else {
-                return AEC_CONF_ERROR;
-            }
+        /* Automatic storage size */
+        if (strm->bits_per_sample > 16) {
+            /* 24/32 input bit settings */
+            set_size_4(strm);
+        } else if (strm->bits_per_sample > 8) {
+        /* 16 bit settings */
+            set_size_2(strm);
         } else {
-            state->id_len = 3;
-        }
-        state->bytes_per_sample = 1;
+            /* 8 bit settings */
+            if (strm->flags & AEC_RESTRICTED) {
+                if (strm->bits_per_sample <= 4) {
+                    if (strm->bits_per_sample <= 2)
+                        state->id_len = 1;
+                    else
+                        state->id_len = 2;
+                } else {
+                    return AEC_CONF_ERROR;
+                }
+            } else {
+                state->id_len = 3;
+            }
+            state->bytes_per_sample = 1;
 
-        state->get_sample = aec_get_8;
-        state->get_rsi = aec_get_rsi_8;
+            state->get_sample = aec_get_8;
+            state->get_rsi = aec_get_rsi_8;
+        }
     }
     state->rsi_len = strm->rsi * strm->block_size * state->bytes_per_sample;
 

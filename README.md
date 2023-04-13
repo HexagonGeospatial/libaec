@@ -122,13 +122,19 @@ in decoded data has to be minimized.
 * `AEC_DATA_3BYTE`: the 17 to 24 bit input data is stored in three
   bytes. This flag has no effect for other sample sizes.
 
+* `AEC_DATA_WORD`: input data is stored in words (two bytes)
+
+* `AEC_DATA_DOUBLEWORD`: input data is stored in doublewords (four
+  bytes)
+
 * `AEC_RESTRICTED`: use a restricted set of code options. This option is
   only valid for `bits_per_sample` <= 4.
 
 ### Data size:
 
-The following rules apply for deducing storage size from sample size
-(`bits_per_sample`):
+Storage size is imposed by setting `AEC_DATA_WORD` or
+`AEC_DATA_DOUBLEWORD`. If neither are set, the following rules apply
+for deducing storage size from sample size (`bits_per_sample`):
 
  **sample size**  | **storage size**
 --- | ---
